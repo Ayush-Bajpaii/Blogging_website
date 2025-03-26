@@ -2,6 +2,9 @@ POST http://localhost:3000/signup
 Content-Type: application/json
 
 {
-    "fullname":"Ayush Bajpai"
+    "fullname":"piyush",
+    "email":"submit@yahoo.com",
+    "password":"Submit123"
+   
     
 }
