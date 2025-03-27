@@ -1,10 +1,25 @@
 import { Routes, Route} from "react-router-dom";
 import Navbar from "./components/navbar.component";
 import UserAuthForm from "./pages/userAuthForm.page";
+import { createContext, useEffect, useState} from "react";
+import { lookInSession } from "./common/session";
 
+
+export const userContext = createContext({})
 
 const App = () => {
+
+    const [userAuth , setUserAuth] = useState({});
+    useEffect(() => {
+
+        let userInSession = lookInSession("user");
+
+        userInSession ? setUserAuth(JSON.parse(userInSession)) : setUserAuth({ acces_token : null })
+
+    }, [])
+
     return (
+        <userContext.Provider value={{userAuth , setUserAuth}}>
         <Routes>
             <Route path="/" element={<Navbar />}>
                 <Route path="/signin" element={<UserAuthForm type="sign-in"/>} />
@@ -13,6 +28,8 @@ const App = () => {
             </Route>
             
         </Routes>
+        </userContext.Provider>
+        
     );
 }
 
