@@ -6,26 +6,29 @@ import {Link, Navigate} from "react-router-dom";
 import {Toaster,toast} from "react-hot-toast";
 import axios from "axios";
 import { storeInSession } from "../common/session";
-import { userContext } from "../App";
+import { UserContext } from "../App";
+import { authWithGoogle } from "../common/firebase";
 
 
 const UserAuthForm = ({type}) => {
 
     //const authForm = useRef();
 
-    let { userAuth: {access_token},setUserAuth } = useContext(userContext);
-    console.log(access_token);
+    let { userAuth: {access_token},setUserAuth } = useContext(UserContext)
+    //console.log(access_token);
 
-    const userAuthThroughServer = (serverRoute,formData) => {
+    const userAuthThroughServer = (serverRoute, formData) => {
         axios.post(import.meta.env.VITE_SERVER_DOMAIN + serverRoute, formData)
-        .then(({data}) => {
-            storeInSession("user",JSON.stringify(data))
-            setUserAuth(data);            
+        .then(({ data }) => {
+            storeInSession("user", JSON.stringify(data));
+            setUserAuth(data);
         })
-        .catch(({response}) => {
-            toast.error(response.data.error)
-        })
-    }
+        .catch((error) => {
+            const errorMessage = error.response?.data?.error || "An unknown error has occurred";
+            toast.error(errorMessage);
+        });
+    };
+    
 
     const handleSubmit = (e) => {
         e.preventDefault(); 
@@ -63,6 +66,30 @@ const UserAuthForm = ({type}) => {
 
         userAuthThroughServer(serverRoute,formData);
 
+    }
+
+    const handleGoogleAuth = (e) => {
+
+        e.preventDefault();
+
+        authWithGoogle().then(user => {
+            console.log(user);
+            let serverRoute = "/google-auth";
+
+            let formData = {
+                access_token: user.access_token
+            }
+
+            userAuthThroughServer(serverRoute, formData)
+
+        })
+        .catch(err => {
+            toast.error('trouble login through google');
+            return console.log(err);
+            
+
+
+        })
     }
 
     return(
@@ -114,7 +141,9 @@ const UserAuthForm = ({type}) => {
                         <hr className="w-1/2 border-black" />
                     </div>
 
-                <button className="btn-dark flex items-center justify-center gap-4 w-[90%] center" >
+                <button className="btn-dark flex items-center justify-center gap-4 w-[90%] center" 
+                onClick={handleGoogleAuth}
+                >
                     <img src={googleIcon} className="w-5 " />
                     continue with google
                 </button>

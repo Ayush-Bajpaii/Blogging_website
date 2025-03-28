@@ -6,9 +6,26 @@ import User from "./Schema/User.js";
 import { nanoid } from "nanoid";
 import jwt from "jsonwebtoken";
 import cors from "cors";
+import admin from "firebase-admin";
+import { createRequire } from "module";
+import aws from "aws-sdk";
+
+
+
+const require = createRequire(import.meta.url);
+const serviceAccountKey = require("./blogwebsite-79574-firebase-adminsdk-fbsvc-f114d3e651.json");
+import { getAuth  } from "firebase-admin/auth";
+
+
+
+
 
 const server = express();
 let PORT = 3000;
+
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccountKey)
+})
 
 let emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
 let passwordRegex = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{6,20}$/;
@@ -19,6 +36,29 @@ server.use(cors());
 mongoose.connect(process.env.DB_LOCATION,{
     autoIndex:true
 })
+
+    //setting up s3 bucket
+    const s3 = new aws.S3({
+        region:'ap-south-1',
+        accessKeyId : process.env.AWS_ACCESS_KEY,
+        secretAccessKey : process.env.AWS_SECRET_ACCESS_KEY
+    })
+
+
+    const generateUploadURL = async () => {
+        const date = new Date();
+        const imageName = `${nanoid()}-${date.getTime()}.jpeg`
+
+       return await  s3.getSignedUrlPromise('putObject',{
+            Bucket:'blogging-webpage',
+            Key: imageName,
+            Expires: 1000,
+            ContentType:"image/jpeg"
+        })
+
+    }
+
+
     const formatDatatoSend = (user) => {
         const access_token = jwt.sign({id: user._id}, process.env.SECRET_ACCESS_KEY)
 
@@ -37,7 +77,17 @@ mongoose.connect(process.env.DB_LOCATION,{
         isUsernameNotUnique ? username += nanoid().substring(0, 5) : "";
         return username;
     };
-console.log('MongoDB connected successfully');
+
+
+    //upload image url route
+    server.get('/get-upload-url', (req,res) => {
+        generateUploadURL().then(url => res.status(200).json({uploadURL: url}))
+        .catch(err => {
+            console.log(err.message);
+            return res.status(500).json({ error: err.message })
+        })
+    })
+    
 
 server.post("/signup", (req,res) =>{
     let { fullname, email, password } = req.body;
@@ -71,7 +121,7 @@ server.post("/signup", (req,res) =>{
                 return res.status(500).json({ "error":"E-mail already exists"})
             }
 
-            return res.status(403).json({ "error": "err.message"})
+            return res.status(403).json({ "error": err.message})
         })
     })
     
@@ -83,17 +133,25 @@ server.post("/signup", (req,res) =>{
                 if(!user){
                     return res.status(403).json({"error":"Email not found"})
                 }
-                bcrypt.compare(password, user.personal_info.password, (err, result) => {
-                    if(err){
-                        return res.status(403).json({"error":"Error occured while login, Please try again"}) 
-                    }
-                    if(!result){
-                        return res.status(403).json({"error":"Incorrect Password"})
-                    }else{
-                        return res.status(200).json(formatDatatoSend(user))
-                    }
 
-                })
+                if(!user.google_auth){
+                    bcrypt.compare(password, user.personal_info.password, (err, result) => {
+                        if(err){
+                            return res.status(403).json({"error":"Error occured while login, Please try again"}) 
+                        }
+                        if(!result){
+                            return res.status(403).json({"error":"Incorrect Password"})
+                        }else{
+                            return res.status(200).json(formatDatatoSend(user))
+                        }
+    
+                    })
+
+                }
+
+                else{
+                    return res.status(403).json({"error":"Account was created using Google.Try logging in with google"})
+                }
 
                 // console.log(user)
                 // return res.json({"status":"got user document"})
@@ -103,6 +161,54 @@ server.post("/signup", (req,res) =>{
             })
 
         })
+
+        server.post("/google-auth", async (req, res) => {
+            const { access_token } = req.body;
+          
+            // Validate input
+            if (!access_token || typeof access_token !== "string") {
+              return res.status(400).json({ error: "Invalid or missing access token" });
+            }
+          
+           // console.log("Received access_token:", access_token); // Debug log
+          
+            try {
+              // Verify Firebase ID token
+              const decodedUser = await getAuth().verifyIdToken(access_token);
+              const { email, name, picture } = decodedUser;
+          
+              // Adjust picture size
+              const profile_img = picture.replace("s96-c", "s384-c");
+          
+              // Check if user exists
+              let user = await User.findOne({ "personal_info.email": email })
+                .select("personal_info.fullname personal_info.username personal_info.profile_img google_auth")
+                .exec();
+          
+              if (user) {
+                // Login case
+                if (!user.google_auth) {
+                  return res.status(403).json({
+                    error: "This email was signed up without Google. Please log in with password to access the account",
+                  });
+                }
+              } else {
+                // Signup case
+                const username = await generateUsername(email);
+                user = new User({
+                  personal_info: { fullname: name, email, profile_img, username },
+                  google_auth: true,
+                });
+                await user.save();
+              }
+          
+              // Send response
+              return res.status(200).json(formatDatatoSend(user));
+            } catch (err) {
+              console.error("Google auth error:", err); // Log full error for debugging
+              return res.status(500).json({ error: "Failed to authenticate you. Try with another Google account" });
+            }
+          });
 
 server.listen(PORT,() => {
     console.log('Listening on port ->' + PORT);

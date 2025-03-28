@@ -3,9 +3,10 @@ import Navbar from "./components/navbar.component";
 import UserAuthForm from "./pages/userAuthForm.page";
 import { createContext, useEffect, useState} from "react";
 import { lookInSession } from "./common/session";
+import Editor from "./pages/editor.pages";
 
 
-export const userContext = createContext({})
+export const UserContext = createContext({})
 
 const App = () => {
 
@@ -14,13 +15,16 @@ const App = () => {
 
         let userInSession = lookInSession("user");
 
-        userInSession ? setUserAuth(JSON.parse(userInSession)) : setUserAuth({ acces_token : null })
+        userInSession ? setUserAuth(JSON.parse(userInSession)) : setUserAuth({ access_token : null })
 
     }, [])
 
+    console.log("App - userAuth:", userAuth); 
+
     return (
-        <userContext.Provider value={{userAuth , setUserAuth}}>
+        <UserContext.Provider value={{userAuth , setUserAuth}}>
         <Routes>
+            <Route path="/editor" element={<Editor/>}/>
             <Route path="/" element={<Navbar />}>
                 <Route path="/signin" element={<UserAuthForm type="sign-in"/>} />
                 <Route path="/signup" element={<UserAuthForm type="sign-up" />} />
@@ -28,7 +32,7 @@ const App = () => {
             </Route>
             
         </Routes>
-        </userContext.Provider>
+        </UserContext.Provider>
         
     );
 }
